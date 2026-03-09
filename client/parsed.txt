@@ -1,0 +1,27 @@
+CMD1: {
+  method: 'POST',
+  url: 'http://localhost:3000/api/proxy',
+  headers: [
+    { key: 'Accept', value: '*/*' },
+    { key: 'User-Agent', value: 'Mozilla/5.0' }
+  ],
+  body: '{^method^:^GET^}',
+  auth: { type: 'none', username: '', password: '', token: '' },
+  bodyType: 'text'
+}
+CMD2: {
+  method: 'POST',
+  url: 'http://localhost:3000/api/proxy',
+  headers: [ { key: 'Accept', value: '*/*' } ],
+  body: '{"method":"GET","url":"http://localhost:3000/api/mock/get","headers":{"Content-Type":"application/json","Accept":"*/*"},"bodyType":"json"}',
+  auth: { type: 'none', username: '', password: '', token: '' },
+  bodyType: 'json'
+}
+FETCH: {
+  method: 'POST',
+  url: 'http://localhost:3000/api/proxy',
+  headers: [ { key: 'accept', value: '*/*' } ],
+  body: '{"method":"GET"}',
+  auth: { type: 'none', username: '', password: '', token: '' },
+  bodyType: 'json'
+}

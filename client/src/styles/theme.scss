@@ -1,0 +1,51 @@
+/* src/styles/theme.scss */
+.app-container {
+  /* Default: Dark Theme */
+  --bg-app: #0d1117;
+  --bg-panel: #161b22;
+  --bg-input: #010409;
+  --bg-hover: #21262d;
+  --border-light: #30363d;
+  --border-focus: #58a6ff;
+  
+  --text-primary: #c9d1d9;
+  --text-secondary: #8b949e;
+  --text-muted: #484f58;
+  
+  --accent-blue: #2f81f7;
+  --accent-green: #238636;
+  --accent-yellow: #d29922;
+  --accent-red: #da3633;
+  --accent-purple: #8957e5;
+  --accent-orange: #bd561d;
+  
+  /* Shared */
+  --font-code: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --radius-sm: 6rpx;
+  --radius-md: 12rpx;
+  --radius-lg: 24rpx;
+  
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.app-container.theme-light {
+  --bg-app: #f6f8fa;
+  --bg-panel: #ffffff;
+  --bg-input: #f3f4f6;
+  --bg-hover: #eaeef2;
+  --border-light: #d0d7de;
+  --border-focus: #0969da;
+  
+  --text-primary: #24292f;
+  --text-secondary: #57606a;
+  --text-muted: #8c959f;
+  
+  --accent-blue: #0969da;
+  --accent-green: #1a7f37;
+  --accent-yellow: #9a6700;
+  --accent-red: #cf222e;
+  --accent-purple: #8250df;
+  --accent-orange: #b35900;
+}
