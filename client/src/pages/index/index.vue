@@ -2,12 +2,17 @@
   <view class="app-container" :class="'theme-' + currentTheme" :style="{ paddingBottom: 'env(safe-area-inset-bottom)' }">
     <!-- Header Area with Safe Area Padding -->
     <view class="header-area" :style="{ paddingTop: headerPadding + 'px' }">
-      <text class="app-title">API调试助手</text>
+      <view style="display: flex; align-items: center;">
+        <text class="app-title">API调试助手</text>
+      </view>
       <view class="actions" :style="{ marginRight: menuButtonWidth + 'px' }">
-        <view class="action-btn-text" @click="showCurlModal = true">
-          <text>导入 cURL</text>
+        <view class="header-icon-btn" @click="showFeedbackModal = true" title="反馈">
+          <text class="icon-text">💬</text>
         </view>
-        <view class="theme-toggle" @click="toggleTheme">
+        <view class="header-icon-btn" @click="showCurlModal = true" title="导入 cURL">
+          <text class="icon-text">🔗</text>
+        </view>
+        <view class="header-icon-btn" @click="toggleTheme" title="切换主题">
           <text v-if="currentTheme === 'dark'" class="icon-text">☀️</text>
           <text v-else class="icon-text">🌙</text>
         </view>
@@ -58,16 +63,19 @@
 
     <!-- Config Panel -->
     <view class="config-panel">
-      <!-- Custom Tabs -->
-      <NbTabs 
-        :tabs="tabs" 
-        v-model="uiState.currentTab" 
-      />
+      <!-- Toolbar containing Tabs and Actions -->
+      <view class="config-toolbar">
+        <NbTabs 
+          :tabs="tabs" 
+          v-model="uiState.currentTab" 
+          style="flex: 1; min-width: 0;"
+        />
+      </view>
 
       <!-- Tab Content -->
       <scroll-view scroll-y class="tab-content" :show-scrollbar="false">
         <!-- Params / Headers -->
-        <view v-show="uiState.currentTab === 'params' || uiState.currentTab === 'headers'" class="kv-list">
+        <view v-if="uiState.currentTab === 'params' || uiState.currentTab === 'headers'" class="kv-list">
           <view v-if="kvList.length === 0" class="empty-state">
             <text>未定义任何 {{ uiState.currentTab === 'params' ? '参数' : '请求头' }}</text>
           </view>
@@ -90,7 +98,7 @@
         </view>
 
         <!-- Auth -->
-        <view v-show="uiState.currentTab === 'auth'" class="auth-panel">
+        <view v-else-if="uiState.currentTab === 'auth'" class="auth-panel">
           <view class="type-selector">
             <view class="chip" :class="{ active: requestData.auth.type === 'none' }" @click="requestData.auth.type = 'none'">No</view>
             <view class="chip" :class="{ active: requestData.auth.type === 'basic' }" @click="requestData.auth.type = 'basic'">Basic</view>
@@ -121,7 +129,7 @@
         </view>
 
         <!-- Body -->
-        <view v-show="uiState.currentTab === 'body'" class="body-panel">
+        <view v-else-if="uiState.currentTab === 'body'" class="body-panel">
           <view class="body-toolbar">
              <view class="type-selector body-type-selector">
                 <view class="chip" :class="{ active: requestData.bodyType === 'none' }" @click="requestData.bodyType = 'none'">无</view>
@@ -245,6 +253,43 @@
         <view class="modal-actions" style="margin-top: 24rpx;">
           <view class="modal-btn secondary" @click="showRenameTabModal = false">取消</view>
           <view class="modal-btn primary" @click="confirmRenameTab">确定</view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Feedback Modal -->
+    <view class="modal-mask animate-fade-in" v-if="showFeedbackModal" @click="showFeedbackModal = false">
+      <view class="modal-content animate-slide-up" @click.stop>
+        <view class="modal-header">
+          <text class="modal-title">意见反馈</text>
+          <view class="modal-close" @click="showFeedbackModal = false">
+            <text class="icon-text">✕</text>
+          </view>
+        </view>
+        
+        <input 
+          class="kv-input" 
+          v-model="feedbackEmail" 
+          placeholder="您的邮箱 (选填)" 
+          placeholder-class="placeholder-dim"
+          style="margin-bottom: 16rpx;"
+        />
+        
+        <textarea 
+          class="curl-textarea" 
+          v-model="feedbackContent" 
+          placeholder="请输入您的建议、Bug反馈或需求..." 
+          placeholder-class="placeholder-dim"
+          :maxlength="-1"
+          style="min-height: 200rpx;"
+        ></textarea>
+        
+        <view class="modal-actions" style="margin-top: 24rpx;">
+          <view class="modal-btn secondary" @click="showFeedbackModal = false">取消</view>
+          <view class="modal-btn primary" :class="{'is-loading': isSubmittingFeedback}" @click="handleSubmitFeedback">
+             <text v-if="!isSubmittingFeedback">提交反馈</text>
+             <view v-else class="loader" style="width: 24rpx; height: 24rpx; border-width: 3rpx;"></view>
+          </view>
         </view>
       </view>
     </view>
@@ -460,6 +505,48 @@ const confirmRenameTab = () => {
   }
   showRenameTabModal.value = false;
 };
+
+// Feedback Feature
+const showFeedbackModal = ref(false);
+const feedbackEmail = ref('');
+const feedbackContent = ref('');
+const isSubmittingFeedback = ref(false);
+
+const handleSubmitFeedback = () => {
+  if (!feedbackContent.value.trim()) {
+    uni.showToast({ title: '建议内容不能为空', icon: 'none' });
+    return;
+  }
+  
+  isSubmittingFeedback.value = true;
+  
+  const proxyBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+  
+  uni.request({
+    url: `${proxyBaseUrl}/api/feedback`,
+    method: 'POST',
+    data: {
+      email: feedbackEmail.value.trim(),
+      content: feedbackContent.value.trim()
+    },
+    success: (res) => {
+      if (res.data && res.data.success) {
+        uni.showToast({ title: '提交成功，感谢反馈', icon: 'success' });
+        showFeedbackModal.value = false;
+        feedbackEmail.value = '';
+        feedbackContent.value = '';
+      } else {
+        uni.showToast({ title: res.data?.message || '提交失败', icon: 'none' });
+      }
+    },
+    fail: () => {
+      uni.showToast({ title: '网络请求失败', icon: 'none' });
+    },
+    complete: () => {
+      isSubmittingFeedback.value = false;
+    }
+  });
+};
 </script>
 
 <style scoped>
@@ -516,28 +603,21 @@ const confirmRenameTab = () => {
 .actions {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 8rpx;
 }
-.action-btn-text {
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--accent-blue);
-  background-color: rgba(47, 129, 247, 0.1);
-  padding: 10rpx 20rpx;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-.action-btn-text:active {
-  opacity: 0.8;
-}
-.theme-toggle {
+.header-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  padding: 8rpx;
+  padding: 12rpx;
   color: var(--text-secondary);
+  transition: opacity 0.2s;
+  border-radius: var(--radius-sm);
+}
+.header-icon-btn:active {
+  opacity: 0.8;
+  background-color: rgba(0,0,0,0.05);
 }
 
 /* Global Tabs Bar */
@@ -686,6 +766,16 @@ const confirmRenameTab = () => {
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
 }
+
+.config-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-light);
+  background-color: var(--bg-panel);
+  overflow: hidden;
+}
+
 .tab-content {
   flex: 1;
 }

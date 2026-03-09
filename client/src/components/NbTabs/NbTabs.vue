@@ -39,7 +39,6 @@ const selectTab = (id) => {
 <style scoped>
 .nb-tabs-container {
   width: 100%;
-  border-bottom: 1px solid var(--border-light);
   background-color: transparent;
 }
 .nb-tabs {

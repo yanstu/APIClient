@@ -157,3 +157,6 @@ local/
 /.cunzhi-memory
 /WHATSNAME.md
 /client/package-lock.json
+
+# Server Environment Variables
+server/.env

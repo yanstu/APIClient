@@ -55,9 +55,15 @@
           </view>
           
           <block v-else>
-            <!-- Body Content (Syntax Highlighted) -->
-            <view v-show="uiState.resTab === 'body'" class="code-block" @longpress="copyResponse">
-               <NbJsonViewer :data="responseData.data" />
+            <!-- Body Content (Syntax Highlighted or Media) -->
+            <view v-show="uiState.resTab === 'body'" class="code-block" @longpress="!isMedia && copyResponse()">
+               <!-- Render Media Check -->
+               <view class="media-container" v-if="isMedia">
+                 <image v-if="mediaType === 'image'" :src="responseData.data" mode="widthFix" class="media-preview" :show-menu-by-longpress="true"></image>
+                 <video v-if="mediaType === 'video'" :src="responseData.data" controls class="media-preview"></video>
+               </view>
+               <!-- Fallback to JSON Viewer -->
+               <NbJsonViewer v-else :data="responseData.data" />
             </view>
             
             <!-- Headers Content -->
@@ -104,6 +110,16 @@ const statusColorClass = computed(() => {
   if (s >= 300 && s < 400) return 'is-redirect';
   if (s >= 400 && s < 500) return 'is-warning';
   return 'is-error';
+});
+
+const isMedia = computed(() => {
+  return typeof props.responseData.data === 'string' && props.responseData.data.startsWith('data:');
+});
+const mediaType = computed(() => {
+  if (!isMedia.value) return null;
+  if (props.responseData.data.startsWith('data:image/')) return 'image';
+  if (props.responseData.data.startsWith('data:video/')) return 'video';
+  return null;
 });
 
 const toggleDrawer = () => {
@@ -328,6 +344,23 @@ const copyResponse = () => {
   border-radius: var(--radius-md);
   padding: 24rpx;
   border: 1px solid var(--border-light);
+}
+
+.media-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200rpx;
+  padding: 20rpx;
+  background: repeating-conic-gradient(var(--border-light) 0% 25%, transparent 0% 50%) 50% / 20px 20px;
+  border-radius: var(--radius-sm);
+}
+
+.media-preview {
+  max-width: 100%;
+  max-height: 600rpx;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.1);
 }
 
 .res-header-row {

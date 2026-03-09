@@ -1,14 +1,21 @@
 <template>
   <view class="nb-json-viewer">
-    <!-- rich-text supports user-select since base library 2.22.1 -->
-    <rich-text v-if="formattedHtml" :nodes="formattedHtml" class="rich-json" user-select="true"></rich-text>
-    <text v-else class="raw-text" user-select="true">{{ fallbackText }}</text>
+    <template v-if="parsedJson !== null">
+      <NbJsonNode
+        :data="parsedJson"
+        :colors="colors"
+      />
+    </template>
+    <view v-else>
+      <text class="raw-text" user-select="true">{{ fallbackText }}</text>
+    </view>
   </view>
 </template>
 
 <script setup>
 import { computed } from 'vue';
 import { useTheme } from '../../composables/useTheme';
+import NbJsonNode from './NbJsonNode.vue';
 
 const props = defineProps({
   data: {
@@ -19,7 +26,7 @@ const props = defineProps({
 
 const { currentTheme } = useTheme();
 
-// Colors based on theme context (using inline styles for rich-text)
+// Colors based on theme context (matching GitHub dark/light dimensions)
 const colors = computed(() => {
   const isDark = currentTheme.value === 'dark';
   return {
@@ -32,6 +39,25 @@ const colors = computed(() => {
   };
 });
 
+// Try to parse the input data aggressively into a JSON object literal.
+const parsedJson = computed(() => {
+  if (props.data === null || props.data === undefined) return null;
+  if (typeof props.data === 'object') return props.data;
+  
+  if (typeof props.data === 'string') {
+    try {
+      const parsed = JSON.parse(props.data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
+    } catch {
+      // Not valid object JSON
+      return null;
+    }
+  }
+  return null;
+});
+
 const fallbackText = computed(() => {
   if (props.data === null || props.data === undefined) return '';
   if (typeof props.data === 'string') return props.data;
@@ -41,57 +67,6 @@ const fallbackText = computed(() => {
     return String(props.data);
   }
 });
-
-const formattedHtml = computed(() => {
-  if (props.data === null || props.data === undefined) return '';
-  if (typeof props.data === 'string') {
-    // If it's just a string, try to parse it, else return formatted string
-    try {
-      const parsed = JSON.parse(props.data);
-      return `<div style="white-space:pre-wrap; word-break:break-all; font-family:monospace; line-height:1.5; font-size:12px;">${highlight(JSON.stringify(parsed, null, 2))}</div>`;
-    } catch {
-      return `<div style="color:${colors.value.string}; white-space:pre-wrap; word-break:break-all;">${escapeHtml(props.data)}</div>`;
-    }
-  }
-  try {
-    const jsonStr = JSON.stringify(props.data, null, 2);
-    return `<div style="white-space:pre-wrap; word-break:break-all; font-family:monospace; line-height:1.5; font-size:12px;">${highlight(jsonStr)}</div>`;
-  } catch (e) {
-    return `<div style="color:${colors.value.string}; white-space:pre-wrap; word-break:break-all;">${escapeHtml(String(props.data))}</div>`;
-  }
-});
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function highlight(jsonStr) {
-  let str = escapeHtml(jsonStr);
-  
-  // Syntax highlighting regex
-  const regex = /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g;
-  
-  return str.replace(regex, (match) => {
-    let color = colors.value.number;
-    if (/^"/.test(match)) {
-      if (/:$/.test(match)) {
-        // It's a key
-        color = colors.value.key;
-        // Keep the colon colored as punctuation
-        const key = match.replace(/:$/, '');
-        return `<span style="color:${color}">${key}</span><span style="color:${colors.value.punctuation}">:</span>`;
-      } else {
-        // It's a string
-        color = colors.value.string;
-      }
-    } else if (/true|false/.test(match)) {
-      color = colors.value.boolean;
-    } else if (/null/.test(match)) {
-      color = colors.value.null;
-    }
-    return `<span style="color:${color}">${match}</span>`;
-  }).replace(/([{}\[\],])/g, `<span style="color:${colors.value.punctuation}">$1</span>`);
-}
 </script>
 
 <style scoped>
@@ -103,5 +78,6 @@ function highlight(jsonStr) {
   font-size: 24rpx;
   color: var(--text-primary);
   word-break: break-all;
+  white-space: pre-wrap;
 }
 </style>
