@@ -17,6 +17,11 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
+# 脚本启动即确保 PATH 包含安装器默认落盘目录 ~/.local/bin
+# ---------------------------------------------------------------------------
+export PATH="${HOME}/.local/bin:${PATH}"
+
+# ---------------------------------------------------------------------------
 # 路径定位：脚本位于 <repo>/scripts/，仓库根目录即其上一级
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,9 +65,6 @@ fi
 # ---------------------------------------------------------------------------
 # 安装 / 定位 cursor CLI（幂等：已安装则跳过）
 # ---------------------------------------------------------------------------
-# 安装器通常将二进制放在 ~/.local/bin，先确保其在 PATH 中
-export PATH="${HOME}/.local/bin:${PATH}"
-
 # 安静检查：判断某个二进制是否为 Grok CLI 等冒名顶替者。
 # 返回 0 表示是冒名者（不可用），返回 1 表示不是冒名者。
 is_grok_impostor() {
@@ -83,17 +85,26 @@ find_agent_bin() {
     echo "${CURSOR_AGENT_BIN}"
     return
   fi
-  # 1. 安装器的默认落盘路径（最可靠，不受 PATH 中同名命令干扰）
+  # 1. 绝对路径优先：安装器的默认落盘路径（最可靠，不受 PATH 中同名命令干扰）
   if [[ -x "${HOME}/.local/bin/cursor-agent" ]]; then
+    # 若 cursor-agent 不在 PATH 中，但绝对路径下存在该文件，直接使用它并提示
+    if ! command -v cursor-agent >/dev/null 2>&1; then
+      echo "==> 注意: cursor-agent 不在 PATH 中，但已在 ${HOME}/.local/bin/cursor-agent 找到，直接使用绝对路径。" >&2
+    fi
     echo "${HOME}/.local/bin/cursor-agent"
     return
   fi
-  # 2. 优先 cursor-agent：`agent` 这个名字可能被其它 CLI（如 Grok CLI）占用
+  # 2. 绝对路径回退：仅当 ~/.local/bin/agent 不是 Grok 等冒名者时才使用
+  if [[ -x "${HOME}/.local/bin/agent" ]] && ! is_grok_impostor "${HOME}/.local/bin/agent"; then
+    echo "${HOME}/.local/bin/agent"
+    return
+  fi
+  # 3. 优先 cursor-agent：`agent` 这个名字可能被其它 CLI（如 Grok CLI）占用
   if command -v cursor-agent >/dev/null 2>&1; then
     echo "cursor-agent"
     return
   fi
-  # 3. 仅当 `agent` 不是 Grok 等冒名者时才回退使用它；
+  # 4. 仅当 `agent` 不是 Grok 等冒名者时才回退使用它；
   #    绝不把 Grok 的 `agent` 当作 Cursor CLI 交给 worker 命令使用
   if command -v agent >/dev/null 2>&1 && ! is_grok_impostor "agent"; then
     echo "agent"
@@ -150,6 +161,11 @@ print_manual_install_help() {
   echo "     export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
   echo "" >&2
   echo "  然后执行 'source ~/.zshrc'（或重新打开终端）后再次运行本脚本。" >&2
+  echo "" >&2
+  echo "  诊断提示: 若仍提示 command not found，请运行以下命令排查:" >&2
+  echo "     echo \$PATH" >&2
+  echo "     ~/.local/bin/cursor-agent --version" >&2
+  echo "  确认 ~/.local/bin 是否在 PATH 中，以及 cursor-agent 是否已正确安装。" >&2
   echo "" >&2
 }
 
