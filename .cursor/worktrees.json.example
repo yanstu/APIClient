@@ -1,0 +1,15 @@
+{
+  "_readme": [
+    "Example setup config for Cursor agent worktrees (each parallel agent gets an isolated checkout).",
+    "Usage: copy to .cursor/worktrees.json. Cursor runs these commands after creating each worktree.",
+    "Keys: setup-worktree (all OSes), setup-worktree-unix (macOS/Linux), setup-worktree-windows.",
+    "Each key takes an array of shell commands run inside the new worktree, or a string path",
+    "to a script file relative to this file. $ROOT_WORKTREE_PATH points at the primary checkout,",
+    "useful for copying untracked files such as server/.env."
+  ],
+  "setup-worktree-unix": [
+    "cd server && npm install",
+    "cd client && npm install",
+    "cp \"$ROOT_WORKTREE_PATH/server/.env\" server/.env 2>/dev/null || true"
+  ]
+}

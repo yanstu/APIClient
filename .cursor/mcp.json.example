@@ -1,0 +1,37 @@
+{
+  "_readme": [
+    "Example MCP config for controlling this local Mac from a Cloud Agent.",
+    "Usage: copy to .cursor/mcp.json, replace /Users/YOUR_USERNAME paths, then start",
+    "the agent worker on your Mac and select 'My Machine' in the cloud agent UI.",
+    "All servers below use stdio transport: Cursor spawns `command` as a local process",
+    "on the machine running the worker, so tool calls execute on your Mac, not the cloud VM.",
+    "JSON has no comments; keys starting with '_' are documentation and ignored by Cursor.",
+    "Entries under _disabled are inert - move one into mcpServers to enable it.",
+    "Do not commit a real .cursor/mcp.json (it is gitignored); it may hold secrets in env."
+  ],
+  "mcpServers": {
+    "filesystem": {
+      "_comment": "Scoped read/write file access on the local Mac. Append one absolute path arg per directory to expose.",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/YOUR_USERNAME/Projects"
+      ]
+    },
+    "browser": {
+      "_comment": "Browser control placeholder. @playwright/mcp drives a bundled Chromium; swap for @browsermcp/mcp to attach to your own Chrome profile.",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  },
+  "_disabled": {
+    "_comment": "Not loaded by Cursor. Move an entry into mcpServers above to enable it.",
+    "shell": {
+      "_comment": "Generic shell/terminal/process control of the whole Mac via Desktop Commander. Very powerful - enable deliberately.",
+      "command": "npx",
+      "args": ["-y", "@wonderwhy-er/desktop-commander"],
+      "env": {}
+    }
+  }
+}

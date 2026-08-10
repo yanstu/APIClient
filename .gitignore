@@ -39,6 +39,8 @@ coverage/
 
 # IDEs and editors
 .cursor/*
+!.cursor/mcp.json.example
+!.cursor/worktrees.json.example
 .vscode/*
 .augment/*
 !.vscode/extensions.json
