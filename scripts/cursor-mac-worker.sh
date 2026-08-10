@@ -63,6 +63,20 @@ fi
 # 安装器通常将二进制放在 ~/.local/bin，先确保其在 PATH 中
 export PATH="${HOME}/.local/bin:${PATH}"
 
+# 安静检查：判断某个二进制是否为 Grok CLI 等冒名顶替者。
+# 返回 0 表示是冒名者（不可用），返回 1 表示不是冒名者。
+is_grok_impostor() {
+  local bin="$1"
+  local version_output
+  version_output="$("${bin}" --version </dev/null 2>/dev/null || true)"
+  # Grok CLI 版本输出形如 "grok ..." 或 "0.x.y"；
+  # Cursor CLI 版本是日期格式（如 2025.01.17-xxxx）
+  if [[ "${version_output}" =~ ^[Gg]rok ]] || [[ "${version_output}" =~ ^0\.[0-9] ]]; then
+    return 0
+  fi
+  return 1
+}
+
 find_agent_bin() {
   # 0. 显式覆盖：CURSOR_AGENT_BIN 优先级最高
   if [[ -n "${CURSOR_AGENT_BIN:-}" ]]; then
@@ -77,11 +91,15 @@ find_agent_bin() {
   # 2. 优先 cursor-agent：`agent` 这个名字可能被其它 CLI（如 Grok CLI）占用
   if command -v cursor-agent >/dev/null 2>&1; then
     echo "cursor-agent"
-  elif command -v agent >/dev/null 2>&1; then
-    echo "agent"
-  else
-    echo ""
+    return
   fi
+  # 3. 仅当 `agent` 不是 Grok 等冒名者时才回退使用它；
+  #    绝不把 Grok 的 `agent` 当作 Cursor CLI 交给 worker 命令使用
+  if command -v agent >/dev/null 2>&1 && ! is_grok_impostor "agent"; then
+    echo "agent"
+    return
+  fi
+  echo ""
 }
 
 # 校验解析出的二进制确实是 Cursor CLI，而不是同名的冒名顶替者（如 Grok CLI）
@@ -114,19 +132,50 @@ verify_agent_bin() {
   return 0
 }
 
+# 打印手动安装 Cursor CLI 的中文说明后退出
+print_manual_install_help() {
+  echo "" >&2
+  echo "错误: 未能自动安装或定位到有效的 Cursor CLI (cursor-agent)。" >&2
+  echo "" >&2
+  echo "请按以下任一方式手动安装 Cursor CLI，然后重新运行本脚本:" >&2
+  echo "" >&2
+  echo "  方式一（推荐）: 打开 Cursor 应用，按下命令面板快捷键" >&2
+  echo "     (macOS: Cmd+Shift+P)，输入并执行 \"Install 'cursor' command\"" >&2
+  echo "     （或 \"Shell Command: Install cursor-agent CLI\"）以安装 CLI。" >&2
+  echo "" >&2
+  echo "  方式二: 在终端运行官方安装脚本:" >&2
+  echo "     curl https://cursor.com/install -fsS | bash" >&2
+  echo "" >&2
+  echo "  安装完成后，确保 ~/.local/bin 在 PATH 中。可将下面这行加入 ~/.zshrc:" >&2
+  echo "     export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+  echo "" >&2
+  echo "  然后执行 'source ~/.zshrc'（或重新打开终端）后再次运行本脚本。" >&2
+  echo "" >&2
+}
+
 AGENT_BIN="$(find_agent_bin)"
 
 if [[ -z "${AGENT_BIN}" ]]; then
-  echo "==> 未检测到 cursor CLI，开始安装 ..."
-  curl https://cursor.com/install -fsS | bash
+  # 走到这里说明：既没有 cursor-agent，也没有有效的 Cursor `agent`
+  # （可能是未安装，或仅存在 Grok 等冒名顶替的 `agent`）。自动安装。
+  echo "==> 未检测到有效的 Cursor CLI，开始自动安装 ..."
+  curl https://cursor.com/install -fsS | bash || true
   export PATH="${HOME}/.local/bin:${PATH}"
   hash -r
-  AGENT_BIN="$(find_agent_bin)"
-  if [[ -z "${AGENT_BIN}" ]]; then
-    echo "错误: 安装完成后仍找不到 cursor-agent 命令。请重新打开终端或手动将 ~/.local/bin 加入 PATH 后重试。" >&2
-    exit 1
+
+  # 安装后显式复查安装器的默认落盘路径，避免受 PATH 中冒名者干扰
+  if [[ -x "${HOME}/.local/bin/cursor-agent" ]]; then
+    AGENT_BIN="${HOME}/.local/bin/cursor-agent"
+    echo "==> cursor CLI 安装完成 (${AGENT_BIN})。"
+  else
+    # 再尝试常规探测（不会回退到 Grok 的 agent）
+    AGENT_BIN="$(find_agent_bin)"
+    if [[ -z "${AGENT_BIN}" ]]; then
+      print_manual_install_help
+      exit 1
+    fi
+    echo "==> cursor CLI 安装完成 (${AGENT_BIN})。"
   fi
-  echo "==> cursor CLI 安装完成。"
 else
   echo "==> 已检测到 cursor CLI (${AGENT_BIN})，跳过安装。"
 fi
