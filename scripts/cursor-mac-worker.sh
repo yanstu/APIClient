@@ -113,12 +113,61 @@ find_agent_bin() {
   echo ""
 }
 
-# 触发官方安装脚本重新安装 Cursor CLI，并刷新 PATH / 命令缓存
+# 校验官方安装器是否把真正的二进制下载到
+# ~/.local/share/cursor-agent/versions/<版本>/cursor-agent。
+# 官方安装脚本有时只创建了 versions 目录却没成功下载二进制（例如网络/代理问题），
+# 留下一个空目录，此时 ~/.local/bin/cursor-agent 可能是指向缺失文件的断链。
+# 返回 0 表示存在且可执行；返回 1 表示缺失（含空 versions 目录的情况）。
+versions_binary_ok() {
+  local versions_dir="${HOME}/.local/share/cursor-agent/versions"
+  local bin
+  for bin in "${versions_dir}"/*/cursor-agent; do
+    if [[ -x "${bin}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# 触发官方安装脚本重新安装 Cursor CLI，并刷新 PATH / 命令缓存。
+# 安装后校验二进制是否真正下载到 ~/.local/share/cursor-agent/versions/*/cursor-agent：
+# 若 versions 目录存在但二进制缺失（例如空目录），说明安装未完成，
+# 打印中文错误并自动重试安装一次；重试仍失败则给出手动下载建议。
 reinstall_cursor_cli() {
   echo "==> 尝试重新安装 Cursor CLI ..." >&2
   curl https://cursor.com/install -fsS | bash || true
   export PATH="${HOME}/.local/bin:${PATH}"
   hash -r
+
+  if versions_binary_ok; then
+    return 0
+  fi
+
+  local versions_dir="${HOME}/.local/share/cursor-agent/versions"
+  echo "错误: 安装未完成，二进制未下载" >&2
+  echo "      预期路径: ${versions_dir}/*/cursor-agent（需存在且可执行）" >&2
+  if [[ -d "${versions_dir}" ]]; then
+    echo "      检测到 versions 目录已存在但缺少可用二进制（可能是空目录）。" >&2
+  fi
+
+  echo "==> 自动重试安装一次 ..." >&2
+  curl https://cursor.com/install -fsS | bash || true
+  export PATH="${HOME}/.local/bin:${PATH}"
+  hash -r
+
+  if versions_binary_ok; then
+    echo "==> 重试安装成功，二进制已就绪。" >&2
+    return 0
+  fi
+
+  echo "错误: 安装未完成，二进制未下载（重试后仍失败）" >&2
+  echo "" >&2
+  echo "请尝试手动下载安装 Cursor CLI：" >&2
+  echo "  1. 重新运行官方安装脚本: curl https://cursor.com/install -fsS | bash" >&2
+  echo "  2. 或在 Cursor 应用中打开命令面板执行 \"Install 'cursor' command\"。" >&2
+  echo "  3. 检查网络 / 代理是否阻止了二进制下载，确认 ${versions_dir} 下" >&2
+  echo "     存在可执行的 cursor-agent 后再重新运行本脚本。" >&2
+  return 1
 }
 
 # 校验候选 CLI 路径确实指向一个真实存在、可用的文件。
