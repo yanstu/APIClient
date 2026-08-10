@@ -12,6 +12,7 @@
 # 可选环境变量:
 #   CURSOR_WORKER_NAME   worker 名称（默认取主机名，取不到时用 "my-mac"）
 #   CURSOR_API_KEY       API Key，设置后跳过交互式登录检查
+#   CURSOR_AGENT_BIN     显式指定 Cursor CLI 路径（跳过自动探测）
 #
 set -euo pipefail
 
@@ -39,7 +40,7 @@ for arg in "$@"; do
       DEBUG_MODE=1
       ;;
     -h|--help)
-      sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -63,14 +64,54 @@ fi
 export PATH="${HOME}/.local/bin:${PATH}"
 
 find_agent_bin() {
-  if command -v agent >/dev/null 2>&1; then
-    echo "agent"
-  elif command -v cursor-agent >/dev/null 2>&1; then
-    # 旧版本安装名为 cursor-agent，同样兼容
+  # 0. 显式覆盖：CURSOR_AGENT_BIN 优先级最高
+  if [[ -n "${CURSOR_AGENT_BIN:-}" ]]; then
+    echo "${CURSOR_AGENT_BIN}"
+    return
+  fi
+  # 1. 安装器的默认落盘路径（最可靠，不受 PATH 中同名命令干扰）
+  if [[ -x "${HOME}/.local/bin/cursor-agent" ]]; then
+    echo "${HOME}/.local/bin/cursor-agent"
+    return
+  fi
+  # 2. 优先 cursor-agent：`agent` 这个名字可能被其它 CLI（如 Grok CLI）占用
+  if command -v cursor-agent >/dev/null 2>&1; then
     echo "cursor-agent"
+  elif command -v agent >/dev/null 2>&1; then
+    echo "agent"
   else
     echo ""
   fi
+}
+
+# 校验解析出的二进制确实是 Cursor CLI，而不是同名的冒名顶替者（如 Grok CLI）
+verify_agent_bin() {
+  local bin="$1"
+  local version_output help_output
+  version_output="$("${bin}" --version </dev/null 2>/dev/null || true)"
+
+  # 负向检查：Grok CLI 也会把自己安装为 `agent`。
+  # 其版本输出形如 "grok ..." 或 "0.x.y"（Cursor CLI 版本是日期格式，如 2025.01.17-xxxx）
+  if [[ "${version_output}" =~ ^[Gg]rok ]] || [[ "${version_output}" =~ ^0\.[0-9] ]]; then
+    echo "错误: 检测到 '${bin}' 实际上不是 Cursor CLI（版本输出: ${version_output:-空}）。" >&2
+    echo "很可能是 Grok CLI 等其它工具占用了 'agent' 命令名，与 Cursor CLI 冲突。" >&2
+    echo "" >&2
+    echo "解决方法（任选其一）:" >&2
+    echo "  1. 直接使用 'cursor-agent' 命令（Cursor CLI 的完整命令名）" >&2
+    echo "  2. 重新安装 Cursor CLI:  curl https://cursor.com/install -fsS | bash" >&2
+    echo "  3. 设置 CURSOR_AGENT_BIN 指向正确的 Cursor CLI 路径后重试" >&2
+    return 1
+  fi
+
+  # 正向检查（宽松）：版本为日期格式，或 --help 提及 cursor 即认为可信；
+  # 无法确认时仅提示警告，不中断执行
+  if [[ ! "${version_output}" =~ ^20[0-9][0-9]\. ]]; then
+    help_output="$("${bin}" --help </dev/null 2>/dev/null || true)"
+    if [[ "${help_output}" != *[Cc]ursor* ]]; then
+      echo "警告: 无法确认 '${bin}' 是 Cursor CLI（版本输出: ${version_output:-空}），继续执行但可能出错。" >&2
+    fi
+  fi
+  return 0
 }
 
 AGENT_BIN="$(find_agent_bin)"
@@ -82,7 +123,7 @@ if [[ -z "${AGENT_BIN}" ]]; then
   hash -r
   AGENT_BIN="$(find_agent_bin)"
   if [[ -z "${AGENT_BIN}" ]]; then
-    echo "错误: 安装完成后仍找不到 agent 命令。请重新打开终端或手动将 ~/.local/bin 加入 PATH 后重试。" >&2
+    echo "错误: 安装完成后仍找不到 cursor-agent 命令。请重新打开终端或手动将 ~/.local/bin 加入 PATH 后重试。" >&2
     exit 1
   fi
   echo "==> cursor CLI 安装完成。"
@@ -90,7 +131,10 @@ else
   echo "==> 已检测到 cursor CLI (${AGENT_BIN})，跳过安装。"
 fi
 
-echo "==> CLI 版本: $("${AGENT_BIN}" --version 2>/dev/null || echo '未知')"
+verify_agent_bin "${AGENT_BIN}" || exit 1
+
+echo "==> 使用 CLI: $(command -v "${AGENT_BIN}" || echo "${AGENT_BIN}")"
+echo "==> CLI 版本: $("${AGENT_BIN}" --version </dev/null 2>/dev/null || echo '未知')"
 
 # ---------------------------------------------------------------------------
 # 登录状态检查
@@ -98,7 +142,7 @@ echo "==> CLI 版本: $("${AGENT_BIN}" --version 2>/dev/null || echo '未知')"
 if [[ -n "${CURSOR_API_KEY:-}" ]]; then
   echo "==> 检测到 CURSOR_API_KEY，将使用 API Key 认证。"
 else
-  if "${AGENT_BIN}" status >/dev/null 2>&1; then
+  if "${AGENT_BIN}" status </dev/null >/dev/null 2>&1; then
     echo "==> 已登录 Cursor 账号。"
   else
     echo "尚未登录 Cursor。请先运行以下命令完成登录后重试:" >&2
