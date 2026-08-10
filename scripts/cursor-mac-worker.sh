@@ -113,6 +113,64 @@ find_agent_bin() {
   echo ""
 }
 
+# 触发官方安装脚本重新安装 Cursor CLI，并刷新 PATH / 命令缓存
+reinstall_cursor_cli() {
+  echo "==> 尝试重新安装 Cursor CLI ..." >&2
+  curl https://cursor.com/install -fsS | bash || true
+  export PATH="${HOME}/.local/bin:${PATH}"
+  hash -r
+}
+
+# 校验候选 CLI 路径确实指向一个真实存在、可用的文件。
+# 处理三种情况:
+#   1. 普通命令名（在 PATH 中可解析）：直接放行，交由后续版本校验判断。
+#   2. 显式文件路径：必须存在（-f/-x）；
+#   3. 符号链接：必须能解析到真实存在的目标（readlink -f + test -e）；
+#      若为断链（broken symlink），打印中文错误并触发重装。
+# 返回 0 表示可用；返回 1 表示不可用（并已在必要时触发重装）。
+verify_binary_exists() {
+  local bin="$1"
+
+  # 情况 1: 传入的是纯命令名（不含路径分隔符），交给 PATH 解析
+  if [[ "${bin}" != */* ]]; then
+    if command -v "${bin}" >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "错误: 命令 '${bin}' 不在 PATH 中，无法定位到可执行文件。" >&2
+    reinstall_cursor_cli
+    return 1
+  fi
+
+  # 情况 2/3: 传入的是文件路径
+
+  # 断链检测：路径本身是符号链接，但解析后的目标不存在
+  if [[ -L "${bin}" ]]; then
+    local resolved
+    resolved="$(readlink -f "${bin}" 2>/dev/null || true)"
+    if [[ -z "${resolved}" || ! -e "${resolved}" ]]; then
+      echo "错误: '${bin}' 是一个断开的符号链接（broken symlink），指向的目标不存在。" >&2
+      echo "      解析结果: ${resolved:-无法解析}" >&2
+      echo "      这通常意味着 Cursor CLI 曾被安装后又被删除或移动。" >&2
+      reinstall_cursor_cli
+      return 1
+    fi
+  fi
+
+  # 常规文件存在性检查：既不是普通文件也不是可执行文件即视为不存在
+  if [[ ! -e "${bin}" ]]; then
+    echo "错误: 未找到 CLI 文件 '${bin}'（路径不存在）。" >&2
+    reinstall_cursor_cli
+    return 1
+  fi
+  if [[ ! -f "${bin}" && ! -x "${bin}" ]]; then
+    echo "错误: '${bin}' 存在但既不是普通文件也不是可执行文件，无法作为 Cursor CLI 使用。" >&2
+    reinstall_cursor_cli
+    return 1
+  fi
+
+  return 0
+}
+
 # 校验解析出的二进制确实是 Cursor CLI，而不是同名的冒名顶替者（如 Grok CLI）
 verify_agent_bin() {
   local bin="$1"
@@ -194,6 +252,16 @@ if [[ -z "${AGENT_BIN}" ]]; then
   fi
 else
   echo "==> 已检测到 cursor CLI (${AGENT_BIN})，跳过安装。"
+fi
+
+# 先确认候选 CLI 路径真实可用（存在 / 非断链），再做冒名者校验。
+# 若首次校验失败，verify_binary_exists 会尝试重装，随后重新探测一次。
+if ! verify_binary_exists "${AGENT_BIN}"; then
+  AGENT_BIN="$(find_agent_bin)"
+  if [[ -z "${AGENT_BIN}" ]] || ! verify_binary_exists "${AGENT_BIN}"; then
+    print_manual_install_help
+    exit 1
+  fi
 fi
 
 verify_agent_bin "${AGENT_BIN}" || exit 1
